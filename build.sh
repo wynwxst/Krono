@@ -1,0 +1,1 @@
+clang++ -I/opt/homebrew/Cellar/llvm/20.1.3/include -L/opt/homebrew/opt/llvm/lib -lLLVM-20 -llldb krono.cpp -o krono -I. -g

@@ -1,0 +1,1 @@
+clang++ -I/usr/lib/llvm-18/include -std=c++17 -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -L/usr/lib/llvm-18/lib -lLLVM-18 -llldb -I. krono.cpp -o kronol
