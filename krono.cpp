@@ -53,10 +53,15 @@ int main(int argc, char** argv) {
         auto update = std::make_shared<bool>(false);
         client.setLPAD_cb(client_display);
         client.connectToServer();
+        client.sendCommand("iamclient");
 
         while (command != "stop"){
-            printf("> ");
+            std::cout << "\u001b[1m" << "krono" << "\033[0m" <<"▶ ";
             std::getline(std::cin, input);
+            if (input == "disconnect"){
+                client.disconnect();
+                exit(0);
+            }
         
 
 

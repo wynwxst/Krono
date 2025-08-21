@@ -94,8 +94,13 @@ public:
             auto trimmed = result;
             trimmed.erase(trimmed.find_last_not_of(" \n\r\t")+1);
             if (wait_for.find(trimmed) != wait_for.end()){
-                std::cout << "got update!" << std::endl;
                 *wait_for[result] = true;
+            }
+            if (trimmed == "stop_client"){
+                display("Client stopped: Server closed");
+                disconnect();
+                exit(0);
+
             }
             return result;
         } else {
@@ -169,15 +174,23 @@ public:
         }
     }
 
-    void disconnect() {
-        std::string discreq =  sendCommand("disconnect");
+    bool disconnected = false;
 
-#ifdef _WIN32
-        if (sock != -1) closesocket(sock);
-#else
-        if (sock != -1) close(sock);
-#endif
-        sock = -1;
+    void disconnect() {
+        if (disconnected) return;
+        std::cout << "disconnecting" << std::endl;
+        std::string discreq =  sendCommand("disconnect");
+        std::cout << "disconnected" << std::endl;
+        disconnected = true;
+        if (discreq == "received"){
+
+            #ifdef _WIN32
+                    if (sock != -1) closesocket(sock);
+            #else
+                    if (sock != -1) close(sock);
+            #endif
+                    sock = -1;
+        }
     }
 
     void register_wait(std::string wfor, std::shared_ptr<bool> ref){

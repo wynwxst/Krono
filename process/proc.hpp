@@ -604,7 +604,7 @@ class Process {
 
 
             lldb::SBFunction func = frame.GetFunction();
-            lldb::addr_t func_start_addr = 0; // default invalid
+            lldb::addr_t func_start_addr = 0;
             if (func.IsValid()) {
                 func_start_addr = func.GetStartAddress().GetLoadAddress(*aP.target);
             } else {
@@ -999,6 +999,38 @@ class Process {
             return std::string("Failed to write memory: ") + err.GetCString() + ".\n";
         }
         return "Wrote to memory.\n";
+    }
+
+    std::string readMem(activeProcess aP,uint64_t addr, uint64_t size){
+        std::string result;
+        auto process = aP.activeProc;
+        lldb::SBError err;
+        lldb::SBMemoryRegionInfo region;
+        if (!process->GetMemoryRegionInfo(addr, region).Success() || !region.IsReadable()) {
+            return "Region/address is not readable.\n";
+        }
+        std::vector<uint8_t> buffer(size);
+        uint32_t remaining = size;
+        int chunk = 0;
+        while (remaining > 0) {
+            uint32_t chunk_size = (remaining >= 8) ? 8 : remaining;
+            uint64_t pointee = process->ReadUnsignedFromMemory(addr, chunk_size, err);
+            if (!err.Success()) {
+                return "Failed to read memory.\n";
+                break;
+            }
+            result += hexStr(pointee) + " ";
+            addr += chunk_size;
+            remaining -= chunk_size;
+            chunk++;
+            if (chunk % 2 == 0){
+                result += "\n";
+            }
+        }
+        if (err.Fail()){
+            return std::string("Failed to read memory: ") + err.GetCString() + ".\n";
+        }
+        return result;
     }
 };
 

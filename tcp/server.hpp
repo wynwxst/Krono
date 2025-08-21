@@ -167,6 +167,7 @@ public:
         }
     }
 
+
     void BroadcastSpecificUpdate(std::string type){
         //pending_updates.clear();
         *specific_update = type;
@@ -205,12 +206,29 @@ public:
     int client_fd;
     bool targetset;
 
+    bool isClientsEmpty(){
+        for (auto sock : *client_sockets){
+            if (sock != -1){
+                return false;
+            }
+
+        }
+        return true;
+    }
+
     void handle_client(int sock, bool first_client = false) {
-        while (!sigstop) {
+        while (true) {
             std::string command = receive(sock, !first_client ? false : true);
             if (command.empty()) break;
 
-            handle_request(command, sock, !first_client ? false : true);
+            int8_t opt = handle_request(command, sock, !first_client ? false : true);
+            if (opt == -2){
+                break;
+            }
+            if (sigstop && isClientsEmpty()){
+                stop();
+                break;
+            }
         }
 
 #ifdef _WIN32
@@ -223,16 +241,24 @@ public:
     }
 
     int handle_request(const std::string& command, int sock = -1, bool first_client = true) {
+        if (sigstop && command != "disconnect"){
+            sendMessage("stop_client");
+        }
         if (command == "stop") {
             sendMessage("Stopping...", sock, first_client);
-            stop();
+            BroadcastUpdate();
+            return -1;
+        }
+        if (command == "iamclient") {
+            client_fd = sock;
+            sendMessage("received", sock, first_client);
             return -1;
         }
         if (command == "disconnect") {
             sendMessage("received", sock, first_client);
             removeClient(sock);
             RemovePending(sock);
-            return -1;
+            return -2;
         }
         if (command == "updated") {
             sendMessage("gotit", sock, first_client);

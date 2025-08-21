@@ -98,7 +98,7 @@ void move(int x, int y) {
 
 
 
-enum Key { UP, DOWN, TAB, QUIT, OTHER, NONE , FILL};
+enum Key { UP, DOWN, RIGHT, LEFT, TAB, QUIT, OTHER, NONE , FILL, SUSPEND};
 
 Key get_key() {
 #ifdef _WIN32
@@ -123,11 +123,15 @@ Key get_key() {
     if (nread == 1) {
         if (buf[0] == 'q') return QUIT;
         if (buf[0] == 'f') return FILL;
+        if (buf[0] == 's') return SUSPEND;
         if (buf[0] == '\t') return TAB;
     }
     if (nread == 3 && buf[0] == '\033' && buf[1] == '[') {
         if (buf[2] == 'A') return UP;
         if (buf[2] == 'B') return DOWN;
+        if (buf[2] == 'C') return RIGHT;
+        if (buf[2] == 'D') return LEFT;
+
     }
     return OTHER;
 #endif
@@ -171,6 +175,7 @@ class PanelManager {
 public:
     int active_panel = 0;
     int startidx = 0;
+    bool suspend=false;
     void add_panel(const Panel& p) { panels.push_back(p); }
 
     void draw() {
@@ -238,21 +243,45 @@ public:
                 case DOWN:
                     move_selection(+1); 
                     break;
+                case RIGHT:
+                    if (active_panel+1 == panels.size()){
+                        active_panel = 0;
+                    } else {
+                        active_panel += 1;
+                    }
+                    break;
+                case LEFT:
+                    if (active_panel-1 == -1){
+                        active_panel = panels.size()-1;
+                    } else {
+                        active_panel -= 1;
+                    } 
+                    break;
                 case TAB:
                     if (!panels.empty()) active_panel = (active_panel + 1) % panels.size();
                     startidx = 0;
                     break;
                 case QUIT:
+                    
                     should_quit = true;
                     break;
                 case FILL:
                     panels[active_panel].fill = !panels[active_panel].fill;
+                    break;
+                case SUSPEND:
+                    suspend = !suspend;
+                    if (suspend){
+                        while (true){
+                            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                        }
+                    }
                     break;
                 case OTHER: break;
                 case NONE: break;
             }
         }
         for (auto p :panels){
+            std::this_thread::sleep_for(std::chrono::seconds(1));
             p.content->deinit();
         }
         clear();

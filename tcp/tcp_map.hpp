@@ -227,6 +227,27 @@ std::string Write(std::string _){
     return "Write: invalid write destination";
 }
 
+std::string Read(std::string _){
+    auto args = parseArgs(_);
+    if (args.size() < 3){
+        return "Read: missing destination type/destination/size";
+    }   
+    auto destty = args[0];
+    auto dest = args[1];
+    
+    if (destty == "mem" || destty == "memory"){
+        return proc.readMem(activeProc,std::stoull(dest,nullptr),std::stoull(args[2],nullptr));
+    }
+
+    return "Read: invalid read destination";
+}
+
+std::string Restart(std::string _){
+    // kill proc _StayExec thread
+    // target + launch
+}
+
+
 
 std::string setinput(std::string _){
     *proc.input_buffer = _;
@@ -259,6 +280,7 @@ void register_endpoints(std::shared_ptr<TCPServer> server){
     server->add_map("break",(void*)Break);
     server->add_map("view",(void*)View);
     server->add_map("write",(void*)Write);
+    server->add_map("read",(void*)Read);
 
     // programatically called
     server->add_map("setinput",(void*)setinput);
