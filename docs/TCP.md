@@ -129,4 +129,10 @@ During this time, the process thread spins, waiting for the client to send the i
 This stops the process from spinning.
 
 
+### Stopping Procedure
 
+Either the server will terminate when no clients remain or the stop procedure is followed
+
+`console client -> 'stop' -> server`
+
+`server -> <to all connected clients> -> 'disconnect_client'`

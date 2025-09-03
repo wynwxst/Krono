@@ -42,20 +42,29 @@ std::string SetTarget(std::string _){
     }
     server->targetset = true;
     std::string binary = args[0];
-    activeProc = proc.Launch(binary);
-    return "Process started with pid: " + std::to_string(activeProc.activeProc->GetProcessID());
+    activeProc = proc.setTarget(binary);
+    return "Set target.\n";
+    
 
 }
 
 std::string Launch(std::string _){
+    activeProc = proc.Launch(activeProc);
+    server->launched = true;
     proc.StayExec(activeProc.activeProc,activeProc.target);
-    return "Process has begun";
+    return "Process started with pid: " + std::to_string(activeProc.activeProc->GetProcessID()) + "\n";
 
 }
 
 std::string Kill(std::string _){
     proc.End(activeProc.activeProc);
     return "Process ended";
+
+}
+
+std::string Detach(std::string _){
+    proc.Detach(activeProc.activeProc);
+    return "Process detached";
 
 }
 
@@ -116,7 +125,7 @@ std::string Disasm(std::string _){
     }
     else if (args[0] == "insts" || args[0] == "i"){
         if (args.size() < 3){
-            return "Disasm Range: No start address/amount of instructions specified";
+            return "Disasm Insts: No start address/amount of instructions specified";
         }
         return proc.getDisasmInsts(activeProc,std::stoull(args[1],nullptr,10),std::stoul(args[2],nullptr,10));
 
@@ -221,6 +230,13 @@ std::string Write(std::string _){
     if (destty == "reg" || destty == "register"){
         return proc.writeRegs(activeProc,dest,write_val);
     } else if (destty == "mem" || destty == "memory"){
+        if (dest == "*"){
+            if (args.size() < 4){
+                return "Write Memory Address: destination/value addresses";
+            }
+            return proc.writeMemAddr(activeProc,std::stoull(args[2],nullptr),std::stoull(args[3],nullptr));
+
+        }
         return proc.writeMem(activeProc,std::stoull(dest,nullptr),write_val);
     }
 
@@ -242,9 +258,18 @@ std::string Read(std::string _){
     return "Read: invalid read destination";
 }
 
+std::string Backtrace(std::string _){
+    return proc.getBackTrace();
+
+    
+
+}
+
 std::string Restart(std::string _){
-    // kill proc _StayExec thread
-    // target + launch
+    proc.Stop(activeProc.activeProc);
+    Detach("");
+    Launch("");
+    
 }
 
 
@@ -267,6 +292,18 @@ std::string free_input(std::string _){
 
 }
 
+std::string launch_flags(std::string _){
+    auto args = parseArgs(_);
+    for (auto arg: args){
+        proc.launch_flags.push_back(arg);
+    }
+    
+    return "set launch flags";
+
+    
+
+}
+
 
 void register_endpoints(std::shared_ptr<TCPServer> server){
     server->add_map("ping",(void*)ping);
@@ -274,6 +311,8 @@ void register_endpoints(std::shared_ptr<TCPServer> server){
     server->add_map("target",(void*)SetTarget);
     server->add_map("launch",(void*)Launch);
     server->add_map("kill",(void*)Kill);
+    server->add_map("detach",(void*)Detach);
+    server->add_map("restart",(void*)Restart);
     server->add_map("continue",(void*)Continue);;
     server->add_map("list",(void*)List);
     server->add_map("disasm",(void*)Disasm);
@@ -281,6 +320,8 @@ void register_endpoints(std::shared_ptr<TCPServer> server){
     server->add_map("view",(void*)View);
     server->add_map("write",(void*)Write);
     server->add_map("read",(void*)Read);
+    server->add_map("backtrace",(void*)Backtrace);
+    server->add_map("launchflags",(void*)launch_flags);
 
     // programatically called
     server->add_map("setinput",(void*)setinput);

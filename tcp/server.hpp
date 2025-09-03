@@ -42,7 +42,7 @@ public:
     }
     void add_map(std::string map, void* to){ mappings[map] = to; }
 
-    bool sigstop = false;
+    std::shared_ptr<bool> sigstop = std::make_shared<bool>(false);
     std::unordered_map<std::string, void*> mappings;
 
     void start() {
@@ -67,7 +67,7 @@ public:
 
         std::cout << "Server listening on port " << port << "...\n";
 
-        while (!sigstop) {
+        while (*sigstop == false) {
             sockaddr_in client_addr{};
             socklen_t addrlen = sizeof(client_addr);
             int sock = accept(server_fd, (struct sockaddr*)&client_addr, &addrlen);
@@ -85,9 +85,14 @@ public:
 
                 std::thread(&TCPServer::handle_client, this, sock, false).detach();
             }
+            if (*sigstop){
+                stop();
+                break;
+            }
 
             std::cout << "Client connected.\n";
         }
+        std::cout << "Ended" << std::endl;
     }
 
 
@@ -102,7 +107,6 @@ public:
 #endif
 
         std::string result = std::string(buffer, valread > 0 ? valread : 0);
-        if (result == "stop") sigstop = true;
         
 
         free(buffer);
@@ -205,6 +209,7 @@ public:
     int server_fd;
     int client_fd;
     bool targetset;
+    bool launched;
 
     bool isClientsEmpty(){
         for (auto sock : *client_sockets){
@@ -218,6 +223,10 @@ public:
 
     void handle_client(int sock, bool first_client = false) {
         while (true) {
+            if (isClientsEmpty()){
+                stop();
+                break;
+            }
             std::string command = receive(sock, !first_client ? false : true);
             if (command.empty()) break;
 
@@ -225,27 +234,32 @@ public:
             if (opt == -2){
                 break;
             }
-            if (sigstop && isClientsEmpty()){
+            if (*sigstop && isClientsEmpty()){
                 stop();
                 break;
             }
-        }
 
-#ifdef _WIN32
-        closesocket(sock);
-#else
-        close(sock);
-#endif
-        if (first_client) client_fd = -1;
+
+
+            
+        }
+        if (isClientsEmpty()){
+            kill(getpid(), SIGTERM);
+        }
         std::cout << "Client disconnected.\n";
     }
 
     int handle_request(const std::string& command, int sock = -1, bool first_client = true) {
-        if (sigstop && command != "disconnect"){
+        
+
+        if (*sigstop && command != "disconnect"){
+            std::cout << "stopping client" << std::endl;
             sendMessage("stop_client");
         }
         if (command == "stop") {
+            std::cout << "stopping server" << std::endl;
             sendMessage("Stopping...", sock, first_client);
+            *sigstop = true;
             BroadcastUpdate();
             return -1;
         }
@@ -293,10 +307,11 @@ public:
             return -1;
         }
 
-        if (command == "launch" || command == "continue")
+        if (command == "launch" || command == "continue"){
             sendMessage("LPAD", sock, first_client);
-        else
+        } else {
             sendMessage("ok", sock, first_client);
+        }
 
         auto func = (std::string (*)(std::string))mappings[command];
         std::string arg = receive(sock, first_client);

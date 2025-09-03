@@ -40,10 +40,6 @@ int main(int argc, char** argv) {
         register_endpoints(server);
         server->port = port;
         server->start();
-        while (server->sigstop == false){
-            server->handle_request(server->receive());
-        }
-        server->stop();
     } else if (args.has("client")){
         std::string input;
         std::string command;
@@ -78,8 +74,9 @@ int main(int argc, char** argv) {
             }
             client_display(client.sendCommand(command,args),false);
         }
-
         client.disconnect();
+
+        //client.sendCommand("stop");
     }
 
 

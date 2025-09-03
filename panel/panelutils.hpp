@@ -271,8 +271,10 @@ public:
                 case SUSPEND:
                     suspend = !suspend;
                     if (suspend){
-                        while (true){
-                            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+                        Key k = LEFT;
+                        while ( k != SUSPEND){
+                            k = get_key();
+                            
                         }
                     }
                     break;

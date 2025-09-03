@@ -156,9 +156,11 @@ class Process {
 
     std::string expr_flags="";
 
+    std::vector<std::string> launch_flags;
 
 
-    activeProcess Launch(std::string Binary,std::string target="native",std::string platform="native"){
+
+    activeProcess setTarget(std::string Binary,std::string target="native",std::string platform="native"){
         lldb::SBError err;
         lldb::SBPlatform hostPlatform = lldb::SBPlatform::GetHostPlatform();
         platform = hostPlatform.GetName();
@@ -175,9 +177,7 @@ class Process {
         if (!LaunchBin.IsValid()) {
             throw std::runtime_error("Invalid Launch Binary:\nBinary: " + Binary + "\nTarget: " + target + "\nPlatform: " + platform + "\nError: " + err.GetCString());
         }
-        lldb::SBLaunchInfo launchInfo(nullptr);
-        //launchInfo.SetLaunchFlags();
-        lldb::SBError error;
+
 
         std::vector<std::string> inputFunctions = {
             // Libc
@@ -199,18 +199,36 @@ class Process {
             "ReadConsoleW"
         };
 
+        
+
         for (auto fn : inputFunctions){
             inputbps.push_back(std::make_shared<lldb::SBBreakpoint>(LaunchBin.BreakpointCreateByName(fn.c_str())));
-
         }
 
         auto bp = std::make_shared<lldb::SBBreakpoint>(LaunchBin.BreakpointCreateByName("main"));
         bp->AddName("Entry Point");
-        bp->SetScriptCallbackFunction("set_unbuffered");
         breakpoints.push_back(bp);
         
 
-        auto process = std::make_shared<lldb::SBProcess>(LaunchBin.Launch(launchInfo, error));
+
+        return activeProcess(nullptr,std::make_shared<lldb::SBTarget>(LaunchBin)); // printf("Process started with PID: %llu\n", process->GetProcessID());
+    }
+
+    activeProcess Launch(activeProcess aP){
+        lldb::SBLaunchInfo launchInfo(nullptr);
+        
+        //launchInfo.SetLaunchFlags();
+        lldb::SBError error;
+        if (!launch_flags.empty()){
+            uint32_t launchflags = 0;
+            for (auto flag : launch_flags){
+                if (flag == "stop_at_entry"){
+                    launchflags |= lldb::eLaunchFlagStopAtEntry;
+                }
+            }
+            launchInfo.SetLaunchFlags(launchflags);
+        }
+        auto process = std::make_shared<lldb::SBProcess>(aP.target->Launch(launchInfo, error));
         //LaunchBin.EvaluateExpression("(void)setvbuf(stdout, NULL, _IONBF, 0)");
         listener = debugger.GetListener();
         process->GetBroadcaster().AddListener(listener,
@@ -219,14 +237,14 @@ class Process {
 
         
         if (error.Fail()) {
-            throw std::runtime_error("Failed to launch Binary:\nBinary: " + Binary + "\nTarget: " + target + "\nPlatform: " + platform + "\nError: " + error.GetCString());
+            throw std::runtime_error(std::string("Failed to launch Binary: ") + error.GetCString());
         }
-        return activeProcess(process,std::make_shared<lldb::SBTarget>(LaunchBin)); // printf("Process started with PID: %llu\n", process->GetProcessID());
+        return activeProcess(process,aP.target);
     }
 
     std::shared_ptr<std::string> input_buffer = std::make_shared<std::string>("");
     bool can_proceed = false;
-
+    std::string backtrace_str = "";
     void _StayExec(std::shared_ptr<lldb::SBProcess> process,std::shared_ptr<lldb::SBTarget> target){
 
 
@@ -249,6 +267,36 @@ class Process {
                         for (uint32_t i = 0; i < process->GetNumThreads(); ++i) {
                             auto thread = process->GetThreadAtIndex(i);
                             if (thread.GetStopReason() == lldb::StopReason::eStopReasonBreakpoint){
+                                backtrace_str.clear();
+                                for (int fidx = 0; fidx < thread.GetNumFrames();fidx++){
+                                    auto frme = thread.GetFrameAtIndex(fidx);
+                                    if (frme.IsValid()){
+                                        lldb::SBVariablesOptions opts;
+                                        opts.SetIncludeArguments(true);
+                                        opts.SetIncludeLocals(false);
+                                        opts.SetIncludeStatics(false);
+                                        opts.SetInScopeOnly(false); 
+                                        auto args = frme.GetVariables(opts);
+                                        std::stringstream ss;
+                                        ss << "Frame #" << frme.GetFrameID() << " " << frme.GetFunctionName() << "(";
+                                        for (int argi = 0; argi < args.GetSize();argi++){
+                                            auto arg = args.GetValueAtIndex(argi);
+                                            if (argi == args.GetSize()-1){
+                                                ss << arg.GetName() << "=" << arg.GetValue();
+                                            } else {
+                                                ss << arg.GetName() << "=" << arg.GetValue() << ", ";
+                                            }
+                                        }
+                                        ss << ") ";
+                                        if (frme.GetLineEntry().IsValid()){
+                                            ss << "[" <<  frme.GetLineEntry().GetFileSpec().GetFilename() << ", (" << frme.GetLineEntry().GetLine() << ":" <<  frme.GetLineEntry().GetColumn() << ")]";
+                                        } else {
+                                            ss << "[No Debug Information Provided]";
+                                        }
+                                        backtrace_str += ss.str() + "\n";
+                                    }
+                                    
+                                }
                                 lldb::break_id_t bp_id = thread.GetStopReasonDataAtIndex(0);
                                 for (auto ibp : inputbps){
                                     if (bp_id == ibp->GetID()){
@@ -299,7 +347,12 @@ class Process {
                                     lldb::SBBreakpoint bp = process->GetTarget().FindBreakpointByID(bp_id);
 
                                     if (bp.IsValid()) {
-                                        
+                                        std::string stop_data;
+                                        size_t needed = thread.GetStopDescription(nullptr, 0);
+                                        std::string stop_reason(needed+1,'\0'); 
+                                        thread.GetStopDescription(stop_reason.data(),needed);
+                                        server->sendMessage("Process Stop Reason: " + stop_reason);
+                                        server->sendMessage( "Frame #" + std::to_string(thread.GetSelectedFrame().GetFrameID()) + ": " + thread.GetSelectedFrame().GetFunctionName());
                                         std::string msg = "Breakpoint Hit:\n";
                                         std::stringstream ss;
                                         auto baseloc = bp.GetLocationAtIndex(0);
@@ -308,9 +361,11 @@ class Process {
                                         bp.GetNames(names);
                                         std::string bp_name = (names.GetSize() > 0) ? names.GetStringAtIndex(0) : "<unnamed>";
                                         msg  += "#" + std::to_string(bp.GetID()) + "  |" + ss.str() + ":   " +  bp_name +  " -- " + std::to_string(bp.GetHitCount())  + " [HIT]\n";
-                                        server->BroadcastUpdate();
-
                                         server->sendMessage(msg);
+                                        server->BroadcastUpdate();
+                                        server->sendMessage(getDisasmPC(activeProcess(process,target)));
+
+                                        
                                         
                                         
                                     }
@@ -323,6 +378,15 @@ class Process {
                                     break;
                                 }
 
+                            } else {
+                                std::string stop_data;
+                                size_t needed = thread.GetStopDescription(nullptr, 0);
+                                std::string stop_reason(needed+1,'\0'); 
+                                thread.GetStopDescription(stop_reason.data(),needed);
+                                server->sendMessage("Process Stop Reason: " + stop_reason);
+                                server->sendMessage( "Frame #" + std::to_string(thread.GetSelectedFrame().GetFrameID()) + ": " + thread.GetSelectedFrame().GetFunctionName());
+                                server->sendMessage(getDisasmPC(activeProcess(process,target)));
+                                server->sendMessage("endloop");
                             }
                             
 
@@ -360,6 +424,10 @@ class Process {
             server->sendMessage(std::string(buf));
         }*/
     }
+    std::string getBackTrace(){
+        return backtrace_str;
+    }
+
     bool alreadyexec=false;
 
     void StayExec(std::shared_ptr<lldb::SBProcess> process,std::shared_ptr<lldb::SBTarget> target){
@@ -997,6 +1065,19 @@ class Process {
         process->WriteMemory(addr,value.c_str(),value.size(),err);
         if (err.Fail()){
             return std::string("Failed to write memory: ") + err.GetCString() + ".\n";
+        }
+        return "Wrote to memory.\n";
+    }
+
+    std::string writeMemAddr(activeProcess aP, uint64_t addr, uint64_t value) {
+        auto process = aP.activeProc;
+        lldb::SBError err;
+        uint8_t buf[sizeof(uint64_t)];
+        std::memcpy(buf, &value, sizeof(value));
+
+        process->WriteMemory(addr, buf, sizeof(buf), err);
+        if (err.Fail()) {
+            return std::string("Failed to write memory: ") + err.GetCString() + "\n";
         }
         return "Wrote to memory.\n";
     }

@@ -113,16 +113,18 @@ class ModulePanel : public ClientPanel {
         if (!done){
             
             auto content = client->sendCommand("list","modules");
-            std::stringstream ss(content);
-            std::string line;
-            preload.clear();
+            if (content != "Target is not initialized.\n"){
+                std::stringstream ss(content);
+                std::string line;
+                preload.clear();
 
-            while (std::getline(ss, line)) {
-                if (!line.empty()) {
-                    preload.push_back(line);
+                while (std::getline(ss, line)) {
+                    if (!line.empty()) {
+                        preload.push_back(line);
+                    }
                 }
+                done = true;
             }
-            done = true;
         }
 
         return preload;
